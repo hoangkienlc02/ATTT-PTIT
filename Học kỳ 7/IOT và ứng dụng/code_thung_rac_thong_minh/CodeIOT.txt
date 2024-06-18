@@ -1,0 +1,477 @@
+#include <Servo.h>
+
+const int triggerPin = 4; // Chân GPIO D2 trên ESP8266
+const int echoPin = 5; // Chân GPIO D1 trên ESP8266
+const int servoPin = 14; // Chân GPIO D5 trên ESP8266
+const int buzzer = 13; // Chân GPIO D7 trên ESP8266
+const int smokeA0 = A0; // Chân Analog A0 trên ESP8266
+
+Servo servo; // Tạo đối tượng servo
+
+bool hasObstacle = false; // Biến để kiểm tra có vật cản hay không
+int sensorThreshold = 400; // Ngưỡng cảm biến khói
+
+void setup() {
+pinMode(triggerPin, OUTPUT);
+pinMode(echoPin, INPUT);
+pinMode(smokeA0, INPUT);
+pinMode(buzzer, OUTPUT);
+
+servo.attach(servoPin); // Gán chân Signal của servo với servoPin
+pinMode(servoPin, OUTPUT);
+
+// Đóng thùng ban đầu
+servo.write(0); // Ghi góc 0 độ cho servo (đóng thùng)
+
+// Khởi tạo giao tiếp Serial
+Serial.begin(9600);
+}
+
+void loop() {
+// Đo khoảng cách từ cảm biến siêu âm
+long duration, distance;
+int smokeValue = analogRead(smokeA0);
+digitalWrite(triggerPin, LOW);
+delayMicroseconds(2);
+digitalWrite(triggerPin, HIGH);
+delayMicroseconds(10);
+digitalWrite(triggerPin, LOW);
+duration = pulseIn(echoPin, HIGH);
+distance = duration * 0.034 / 2;
+
+// Kiểm tra khoảng cách
+if (distance < 30) {
+hasObstacle = true; // Có vật cản
+
+// Nếu servo đang mở thùng, thì đóng thùng lại
+if (servo.read() == 180) {
+servo.write(0); // Ghi góc 0 độ cho servo (đóng thùng)
+delay(3000); // Chờ 2 giây
+}
+} else {
+hasObstacle = false; // Không có vật cản
+
+// Nếu servo đang đóng thùng, thì mở thùng
+if (servo.read() == 0) {
+servo.write(180); // Ghi góc 180 độ cho servo (mở thùng)
+// delay(3000); // Chờ 2 giây
+}
+}
+// Chờ cho servo hoàn thành di chuyển trước khi tiếp tục
+delay(500); // Chờ 0.5 giây
+
+// Đọc giá trị từ cảm biến khói
+Serial.print("Gia tri khoi: ");
+Serial.println(smokeValue);
+
+// Kiểm tra giá trị cảm biến khói vượt ngưỡng
+if (smokeValue > sensorThreshold) {
+// Kích hoạt còi báo động
+tone(buzzer, 2000, 100);
+} else {
+// Tắt còi báo động
+noTone(buzzer);
+}
+delay(100); // Chờ 0.1 giây trước khi đọc lại cảm biến
+}
+
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Địa chỉ I2C của màn hình LED và kích thước (16 cột, 2 dòng)
+
+const int trigPin = 7;  // Chân Trig kết nối với chân 7 (D7)
+const int echoPin = 6;  // Chân Echo kết nối với chân 6 (D6)
+const int maxHeight = 15.5;  // Chiều cao tối đa của thùng rác (đơn vị: cm)
+const int baseArea = 144;  // Diện tích đáy của thùng rác (đơn vị: cm^2)
+const int fullThreshold = 85;  // Ngưỡng lượng rác đầy (%) để hiển thị thông báo
+
+void setup() {
+  lcd.begin(16, 2);  // Khởi động màn hình LED
+  lcd.print("Luong rac:");  // Hiển thị thông báo "Trash Level:" trên hàng 1
+
+  Serial.begin(9600);
+
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+}
+
+void loop() {
+  long duration, distance;
+  float trashLevel;
+
+  // Gửi xung Trig trong 10µs để kích hoạt cảm biến
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  // Đọc thời gian phản hồi từ chân Echo
+  duration = pulseIn(echoPin, HIGH);
+
+  // Tính toán khoảng cách dựa trên thời gian phản hồi
+  distance = duration * 0.034 / 2;
+
+  // Tính toán chiều cao hiện tại của rác trong thùng
+  float currentHeight = maxHeight - distance;
+
+  // Giới hạn chiều cao hiện tại của rác từ 0 đến chiều cao tối đa của thùng
+  if (currentHeight < 0) {
+    currentHeight = 0;
+  } else if (currentHeight > maxHeight) {
+    currentHeight = maxHeight;
+  }
+
+  // Tính toán mức rác còn lại dựa trên chiều cao hiện tại của rác
+  if (currentHeight >= maxHeight) {
+    trashLevel = 100;
+  } else {
+    trashLevel = (currentHeight / maxHeight) * 100;
+  }
+  lcd.backlight();
+  lcd.setCursor(0, 1);  // Di chuyển con trỏ đến hàng 2
+  lcd.print("                 ");  // Xóa dữ liệu cũ trên hàng 2
+  lcd.setCursor(0, 1);  // Di chuyển con trỏ đến hàng 2
+
+  if (trashLevel >= fullThreshold) {
+    lcd.print("Hay do rac!");
+  } else {
+    lcd.print(trashLevel);  // Hiển thị giá trị phần trăm lượng rác còn lại lên hàng 2
+    lcd.print("%");  // Hiển thị ký tự % sau giá trị
+  }
+
+  Serial.println("Trash Level: ");
+  Serial.print(trashLevel);
+}
+
+
+int buzzer = 13;
+int smokeA0 = A0;
+
+// Your threshold value. You might need to change it.
+int sensorThres = 400;
+
+void setup() {
+ pinMode(buzzer, OUTPUT);
+ pinMode(smokeA0, INPUT);
+ Serial.begin(9600);
+}
+
+void loop() {
+ int analogSensor = analogRead(smokeA0);
+
+ Serial.print("Pin A0: ");
+ Serial.println(analogSensor);
+ // Checks if it has reached the threshold value
+ if (analogSensor > sensorThres)
+ {
+   tone(buzzer, 1000, 200);
+ }
+ else
+ {
+   noTone(buzzer);
+ }
+ delay(100);
+}
+
+
+
+
+#include <Blynk.h>
+#define BLYNK_PRINT Serial
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+#include <Servo.h>
+#define BLYNK_TEMPLATE_ID "TMPL6A1DWIPBs"
+#define BLYNK_DEVICE_NAME "Smart Bin"
+// Thông tin mạng Wi-Fi
+char ssid[] = "Iphone02";      // Thay thế bằng tên mạng Wi-Fi của bạn
+char password[] = "12345678";  // Thay thế bằng mật khẩu mạng Wi-Fi của bạn
+
+// Thông tin kết nối Blynk
+char auth[] = "cpG1gJTib1MXCTmcYwOwRTIWgIOzm-3O";   // Thay thế bằng mã token của bạn từ Blynk
+
+// Chân kết nối cảm biến siêu âm
+const int triggerPin = 4; // Chân GPIO D2 trên ESP8266
+const int echoPin = 5; // Chân GPIO D1 trên ESP8266
+
+// Chân kết nối servo motor
+const int servoPin = 14; // Chân GPIO D5 trên ESP8266
+
+// Chân kết nối cảm biến khói
+const int smokeA0 = A0; // Chân Analog A0 trên ESP8266
+
+// Chân kết nối còi báo động
+const int buzzer = 13; // Chân GPIO D7 trên ESP8266
+
+Servo servo; // Tạo đối tượng servo
+
+bool hasObstacle = false; // Biến để kiểm tra có vật cản hay không
+int sensorThreshold = 500; // Ngưỡng cảm biến khói
+int n;
+int n1;
+void setup() {
+  pinMode(triggerPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  pinMode(smokeA0, INPUT);
+  pinMode(buzzer, OUTPUT);
+  servo.attach(servoPin); // Gán chân Signal của servo với servoPin
+  pinMode(servoPin, OUTPUT);
+  ESP8266WiFiClass wifi;
+  // Đóng thùng ban đầu
+  servo.write(0); // Ghi góc 0 độ cho servo (đóng thùng)
+
+  // Kết nối Wi-Fi
+  wifi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Connected to WiFi");
+
+  // Kết nối Blynk
+   Blynk.begin(auth, ssid, password);
+}
+
+void loop() {
+  Blynk.run();
+  checkObstacle();
+  checkSmokeLevel();
+}
+
+// Kiểm tra vật cản
+void checkObstacle() {
+  long duration, distance;
+  digitalWrite(triggerPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(triggerPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(triggerPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034 / 2;
+
+  // Kiểm tra khoảng cách
+  if (distance < 50) {
+    hasObstacle = true; // Có vật cản
+
+    // Nếu servo đang mở thùng, thì đóng thùng lại
+    if (servo.read() == 180) {
+      servo.write(0); // Ghi góc 0 độ cho servo (đóng thùng)
+      delay(3000); // Chờ 2 giây
+    }
+  } else {
+    hasObstacle = false; // Không có vật cản
+
+    // Nếu servo đang đóng thùng, thì mở thùng
+    if (servo.read() == 0) {
+      servo.write(180); // Ghi góc 180 độ cho servo (mở thùng)
+      // delay(3000); // Chờ 2 giây
+    }
+  }
+  // Chờ cho servo hoàn thành di chuyển trước khi tiếp tục
+  delay(500); // Chờ 0.5 giây
+}
+
+// Kiểm tra mức độ khói
+void checkSmokeLevel() {
+  int smokeValue = analogRead(smokeA0);
+
+  // Hiển thị giá trị khói trên Blynk
+  Blynk.virtualWrite(V0, smokeValue);
+
+  //// Kiểm tra giá trị cảm biến khói vượt ngưỡng
+  if (smokeValue > sensorThreshold) {
+    // Kích hoạt còi báo động
+    tone(buzzer, 1000, 0);
+  } else {
+    // Tắt còi báo động
+    noTone(buzzer);
+  }
+  delay(100); // Chờ 0.1 giây trước khi đọc lại cảm biến
+}
+
+
+
+
+
+
+
+
+
+
+#include <Blynk.h>
+#define BLYNK_PRINT Serial
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+#include <Servo.h>
+
+#define BLYNK_TEMPLATE_ID "TMPL6A1DWIPBs"
+#define BLYNK_DEVICE_NAME "Smart Bin"
+
+char ssid[] = "Iphone02";
+char password[] = "12345678";
+char auth[] = "cpG1gJTib1MXCTmcYwOwRTIWgIOzm-3O";
+
+const int triggerPin = 4;
+const int echoPin = 5;
+const int servoPin = 14;
+const int smokeA0 = A0;
+const int buzzer = 13;
+
+Servo servo;
+bool hasObstacle = false;
+int sensorThreshold = 500;
+bool isFireAlert = false;
+int binStatus = 0; // 0 - Đóng thùng rác, 1 - Mở thùng rác
+
+void setup() {
+  pinMode(triggerPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  pinMode(smokeA0, INPUT);
+  pinMode(buzzer, OUTPUT);
+  servo.attach(servoPin);
+  pinMode(servoPin, OUTPUT);
+  ESP8266WiFiClass wifi;
+
+  servo.write(0);
+
+  wifi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("Connected to WiFi");
+
+  Blynk.begin(auth, ssid, password);
+
+  Blynk.virtualWrite(V1, binStatus);
+  Blynk.virtualWrite(V1, "label", "Open (Close)");
+}
+
+void loop() {
+  Blynk.run();
+  checkObstacle();
+  checkSmokeLevel();
+}
+
+void checkObstacle() {
+  long duration, distance;
+  digitalWrite(triggerPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(triggerPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(triggerPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034 / 2;
+
+  if (distance < 50) {
+    hasObstacle = true;
+
+    if (servo.read() == 180) {
+      servo.write(0);
+      delay(3000);
+    }
+  } else {
+    hasObstacle = false;
+
+    if (servo.read() == 0) {
+      servo.write(180);
+    }
+  }
+
+  delay(500);
+}
+
+void checkSmokeLevel() {
+  int smokeValue = analogRead(smokeA0);
+  Blynk.virtualWrite(V0, smokeValue);
+
+  if (smokeValue > sensorThreshold) {
+    tone(buzzer, 1000, 0);
+  } else {
+    noTone(buzzer);
+  }
+  delay(100);
+}
+
+BLYNK_WRITE(V1) {
+  binStatus = param.asInt();
+  if (binStatus == 0) {
+    servo.write(160);
+  } else {
+    servo.write(1);
+  }
+}
+
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Địa chỉ I2C của màn hình LED và kích thước (16 cột, 2 dòng)
+
+const int trigPin = 7;  // Chân Trig kết nối với chân 7 (D7)
+const int echoPin = 6;  // Chân Echo kết nối với chân 6 (D6)
+const int maxHeight = 15.5;  // Chiều cao tối đa của thùng rác (đơn vị: cm)
+const int baseArea = 144;  // Diện tích đáy của thùng rác (đơn vị: cm^2)
+const int fullThreshold = 85;  // Ngưỡng lượng rác đầy (%) để hiển thị thông báo
+
+void setup() {
+  lcd.begin(16, 2);  // Khởi động màn hình LED
+  lcd.print("Luong rac:");  // Hiển thị thông báo "Trash Level:" trên hàng 1
+
+  Serial.begin(9600);
+
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+}
+
+void loop() {
+  long duration, distance;
+  float trashLevel;
+
+  // Gửi xung Trig trong 10µs để kích hoạt cảm biến
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  // Đọc thời gian phản hồi từ chân Echo
+  duration = pulseIn(echoPin, HIGH);
+
+  // Tính toán khoảng cách dựa trên thời gian phản hồi
+  distance = duration * 0.034 / 2;
+
+  // Tính toán chiều cao hiện tại của rác trong thùng
+  float currentHeight = maxHeight - distance;
+
+  // Giới hạn chiều cao hiện tại của rác từ 0 đến chiều cao tối đa của thùng
+  if (currentHeight < 0) {
+    currentHeight = 0;
+  } else if (currentHeight > maxHeight) {
+    currentHeight = maxHeight;
+  }
+
+  // Tính toán mức rác còn lại dựa trên chiều cao hiện tại của rác
+  if (currentHeight >= maxHeight) {
+    trashLevel = 100;
+  } else {
+    trashLevel = (currentHeight / maxHeight) * 100;
+  }
+  lcd.backlight();
+  lcd.setCursor(0, 1);  // Di chuyển con trỏ đến hàng 2
+  lcd.print("                 ");  // Xóa dữ liệu cũ trên hàng 2
+  lcd.setCursor(0, 1);  // Di chuyển con trỏ đến hàng 2
+
+  if (trashLevel >= fullThreshold){
+    lcd.print("Hay do rac!");
+  } else {
+    lcd.print(trashLevel);  // Hiển thị giá trị phần trăm lượng rác còn lại lên hàng 2
+    lcd.print("%");  // Hiển thị ký tự % sau giá trị
+  }
+
+  Serial.println("Trash Level: ");
+  Serial.print(trashLevel);
+}
